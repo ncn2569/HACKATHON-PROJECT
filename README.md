@@ -3,3 +3,10 @@ BOILER PLATE PREPARE FOR KMS HACKATHON
 FIRST TIME PARTICIPANT
 
 TEAMS: BUI DINH PHUC + PHAM HONG NHAN + PHAN TRAN TRUNG NAM + NGUYEN CANH NGUYEN
+
+
+python -m venv venv
+
+venv\Scripts\activate.bat
+
+pip install requirements.txt
