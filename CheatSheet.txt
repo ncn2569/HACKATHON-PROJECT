@@ -1,0 +1,68 @@
+====================================================================
+KMS HACKATHON 2026 - OPEN MODELS CHEATSHEET
+====================================================================
+Tiêu chí chọn: Cài đặt nhanh - Không cần train lại - Chạy nhẹ trên máy cá nhân.
+
+--------------------------------------------------------------------
+1. BÀI TOÁN THỊ GIÁC MÁY TÍNH (COMPUTER VISION)
+--------------------------------------------------------------------
+* Nhận diện / Xác thực khuôn mặt (Face Recognition/Verification)
+- Tên model/Thư viện: DeepFace (Bọc sẵn FaceNet, VGG-Face, ArcFace)
+- Tại sao chọn: Chỉ tốn 2 dòng code để so sánh 2 khuôn mặt. Có hàm trích xuất embeddings sẵn.
+- Link Github: https://github.com/serengil/deepface
+
+* Phát hiện vật thể (Object Detection & Segmentation)
+- Tên model: YOLOv8 / YOLOv10 (của hãng Ultralytics)
+- Tại sao chọn: Vua tốc độ. Nhận diện người, xe cộ, đồ vật real-time qua webcam cực mượt.
+- Link Github/Doc: https://docs.ultralytics.com/
+
+* Phân loại ảnh (Image Classification)
+- Tên model: ResNet50 hoặc EfficientNet (thông qua thư viện PyTorch Image Models - timm)
+- Tại sao chọn: Rất nhẹ, chuẩn công nghiệp để phân loại hình ảnh chung.
+- Link Github: https://github.com/huggingface/pytorch-image-models
+
+--------------------------------------------------------------------
+2. BÀI TOÁN XỬ LÝ NGÔN NGỮ TỰ NHIÊN (NLP / TEXT)
+--------------------------------------------------------------------
+* Phân loại văn bản không cần train (Zero-Shot Classification)
+- Tên model: facebook/bart-large-mnli
+- Tại sao chọn: Đưa văn bản và list các "nhãn" tự định nghĩa, nó tự phân loại. Cực mạnh cho phân tích feedback, gán nhãn tự động.
+- Link HuggingFace: https://huggingface.co/facebook/bart-large-mnli
+
+* Tạo văn bản / Chatbot thu nhỏ (LLMs nhẹ)
+- Tên model: Google Gemma-2b-it hoặc Qwen1.5-1.8B-Chat
+- Tại sao chọn: Các model 7B-8B có thể quá nặng để chạy local mượt mà. Bản 1.8B - 2B này đủ thông minh để làm các tác vụ tóm tắt, trả lời câu hỏi cơ bản mà không làm nổ RAM.
+- Link HuggingFace: https://huggingface.co/google/gemma-2b-it
+
+* Tìm kiếm ngữ nghĩa / RAG (Sentence Embeddings)
+- Tên model: all-MiniLM-L6-v2 (của thư viện sentence-transformers)
+- Tại sao chọn: Biến text thành vector để tính độ tương đồng. Rất cần nếu làm app tìm kiếm tài liệu thông minh.
+- Link Doc: https://sbert.net/
+
+--------------------------------------------------------------------
+3. BÀI TOÁN DỮ LIỆU DẠNG BẢNG & CHUỖI THỜI GIAN (TABULAR & TIME SERIES)
+--------------------------------------------------------------------
+* Dự báo chuỗi thời gian (Sales, Demand, Traffic Forecasting)
+- Tên model/Thư viện: Prophet (của Meta) hoặc Darts
+- Tại sao chọn: Cân mọi bài toán dự báo doanh số, lượng truy cập. Xử lý tốt các yếu tố chu kỳ (ngày, tuần, tháng) và ngày lễ. Fit model trong tíc tắc.
+- Link Github Prophet: https://github.com/facebook/prophet
+- Link Darts: https://unit8co.github.io/darts/
+
+* Phân loại & Hồi quy dữ liệu bảng (Classification/Regression on CSV)
+- Tên model: XGBoost / LightGBM / CatBoost
+- Tại sao chọn: Top 1 các giải Kaggle cho dữ liệu bảng. Cài là chạy, ít tốn công tuning hyperparameter hơn Deep Learning rất nhiều.
+- Link Doc XGBoost: https://xgboost.readthedocs.io/
+
+--------------------------------------------------------------------
+4. BÀI TOÁN ÂM THANH (AUDIO / SPEECH)
+--------------------------------------------------------------------
+* Chuyển giọng nói thành văn bản (Speech-to-Text)
+- Tên model: Whisper (bản whisper-base hoặc whisper-small) của OpenAI.
+- Tại sao chọn: Nhận diện tiếng Việt và tiếng Anh siêu chuẩn. Dùng bản base/small để chạy local nhanh nhất nghiệm thu được ngay.
+- Link Github: https://github.com/openai/whisper
+
+====================================================================
+MẸO CHUNG TÌM MODEL TRÊN HUGGING FACE:
+Truy cập: https://huggingface.co/models 
+Dùng bộ lọc bên trái để chọn Tasks (ví dụ: Text Classification, Object Detection). Ưu tiên các model có lượt Downloads cao nhất (Trending/Most Downloaded).
+====================================================================
