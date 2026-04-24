@@ -49,7 +49,8 @@ app.add_middleware(
 class ChatQuery(BaseModel):
 	question: str
 	session_id: str = "default_student_1"
-	style: str = "Holmes"
+	# style: str = "Holmes"
+	style: str = "Professional"
 	session_token: str
 
 

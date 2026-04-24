@@ -27,12 +27,12 @@ LOADER_MAP = {
     ".docx": lambda p: Docx2txtLoader(p),
 }
 
-STYLE_MAP = {
-    "Tiêu chuẩn": "Giọng điệu chuẩn mực, rõ ràng, mang tính sư phạm, thân thiện và lịch sự.",
-    "Gen Z": "Năng động, hài hước. Dùng từ lóng của Gen Z Việt Nam (như 'khum', 'bất ổn', 'flex', 'slay'). Hay dùng emoji và so sánh bài học với trà sữa, idol, game.",
-    "Holmes": "Đóng vai thám tử Sherlock Holmes. Gọi học sinh là 'cộng sự'. Coi bài tập là một 'vụ án' và các dữ kiện là 'manh mối'. Giọng điệu bí ẩn, thông minh.",
-    "Quân đội": "Đóng vai huấn luyện viên quân đội. Nghiêm khắc, dứt khoát, dùng câu mệnh lệnh. Khích lệ tinh thần thép, không chấp nhận sự lười biếng.",
-}
+# STYLE_MAP = {
+#     "Tiêu chuẩn": "Giọng điệu chuẩn mực, rõ ràng, mang tính sư phạm, thân thiện và lịch sự.",
+#     "Gen Z": "Năng động, hài hước. Dùng từ lóng của Gen Z Việt Nam (như 'khum', 'bất ổn', 'flex', 'slay'). Hay dùng emoji và so sánh bài học với trà sữa, idol, game.",
+#     "Holmes": "Đóng vai thám tử Sherlock Holmes. Gọi học sinh là 'cộng sự'. Coi bài tập là một 'vụ án' và các dữ kiện là 'manh mối'. Giọng điệu bí ẩn, thông minh.",
+#     "Quân đội": "Đóng vai huấn luyện viên quân đội. Nghiêm khắc, dứt khoát, dùng câu mệnh lệnh. Khích lệ tinh thần thép, không chấp nhận sự lười biếng.",
+# }
 
 session_store: dict[str, deque] = {}
 _runtime: dict = {"ready": False}
@@ -222,12 +222,13 @@ def _persist_chat_history(user_id: int | None, question: str, answer: str) -> No
 def chat_with_memory(
     question: str,
     session_id: str = "default_student_1",
-    style: str = "Holmes",
+    style: str = "Professional",
     user_id: int | None = None,
 ) -> dict:
     init_chatbot_runtime()
 
-    detailed_style = STYLE_MAP.get(style, STYLE_MAP["Tiêu chuẩn"])
+    # detailed_style = STYLE_MAP.get(style, STYLE_MAP["Tiêu chuẩn"])
+    detailed_style = style
     stuck_keywords = ["không biết", "chịu", "giải hộ", "đáp án là gì", "không hiểu", "khó quá"]
     is_stuck = any(keyword in question.lower() for keyword in stuck_keywords)
     has_history = session_id in session_store and len(session_store[session_id]) > 0

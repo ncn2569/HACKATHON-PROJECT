@@ -12,7 +12,7 @@ if str(ROOT_DIR) not in sys.path:
 
 
 API_URL = "http://localhost:1891"
-STYLE_OPTIONS = ["Tiêu chuẩn", "Gen Z", "Holmes", "Quân đội"]
+# STYLE_OPTIONS = ["Tiêu chuẩn", "Gen Z", "Holmes", "Quân đội"]
 
 
 st.set_page_config(page_title="Chatbot Socratic", page_icon="💬", layout="wide")
@@ -37,7 +37,7 @@ if "chat_messages" not in st.session_state:
         }
     ]
 
-selected_style = st.selectbox("Phong cach AI", options=STYLE_OPTIONS, index=2)
+selected_style = st.text_input("Phong cach AI", value= "Professional")
 
 for msg in st.session_state.chat_messages:
     with st.chat_message(msg["role"]):
