@@ -28,6 +28,11 @@ QUIZ_SIZE = 10
 MEME_DIR_CANDIDATES = [ROOT_DIR / "meme", ROOT_DIR / "meme" / "meme"]
 
 
+@st.cache_data(ttl=45, show_spinner=False)
+def _load_db_cached(user_id: int, refresh_key: int = 0) -> dict:
+	return load_db(user_id=user_id)
+
+
 def _get_meme_filename(score: int) -> str:
 	if 1 <= score <= 2:
 		return "1.jpg"
@@ -57,8 +62,15 @@ def _resolve_meme_path(score: int) -> Path | None:
 
 
 def bootstrap_user_state() -> None:
-	db = load_db(user_id=AUTH_USER_ID)
+	if "quiz_db_refresh" not in st.session_state:
+		st.session_state.quiz_db_refresh = 0
+
+	db = _load_db_cached(int(AUTH_USER_ID), int(st.session_state.quiz_db_refresh))
 	base_user = get_default_user(db, "hs_01")
+	all_questions = db.get("questions", [])
+
+	if "all_questions" not in st.session_state:
+		st.session_state.all_questions = all_questions
 
 	if "quiz_user" not in st.session_state:
 		st.session_state.quiz_user = {
@@ -80,6 +92,11 @@ def bootstrap_user_state() -> None:
 	if "quiz_report" not in st.session_state:
 		st.session_state.quiz_report = {"weak_topics": [], "review_topics": []}
 
+	if "quiz_question_map" not in st.session_state:
+		st.session_state.quiz_question_map = {
+			q.get("id"): q for q in st.session_state.get("all_questions", []) if q.get("id")
+		}
+
 	if "generated_count" not in st.session_state:
 		st.session_state.generated_count = 0
 
@@ -87,7 +104,7 @@ def bootstrap_user_state() -> None:
 		st.session_state.generation_errors = []
 
 
-def create_new_quiz_set(all_questions: list[dict]) -> None:
+def create_new_quiz_set() -> None:
 	result = build_adaptive_quiz_set(
 		user=st.session_state.quiz_user,
 		quiz_size=QUIZ_SIZE,
@@ -96,6 +113,15 @@ def create_new_quiz_set(all_questions: list[dict]) -> None:
 	)
 	quiz_set = result.get("questions", [])
 	st.session_state.quiz_set_ids = [q.get("id") for q in quiz_set if q.get("id")]
+	st.session_state.quiz_question_map = {q.get("id"): q for q in quiz_set if q.get("id")}
+
+	bank_map = {q.get("id"): q for q in st.session_state.get("all_questions", []) if q.get("id")}
+	for question in quiz_set:
+		qid = question.get("id")
+		if qid:
+			bank_map[qid] = question
+	st.session_state.all_questions = list(bank_map.values())
+
 	st.session_state.quiz_answers = {}
 	st.session_state.quiz_report = result.get("report", {"weak_topics": [], "review_topics": []})
 	st.session_state.generated_count = int(result.get("generated_count", 0))
@@ -109,8 +135,7 @@ def get_progress(quiz_ids: list[str], quiz_answers: dict) -> tuple[int, int]:
 
 
 bootstrap_user_state()
-db_data = load_db(user_id=AUTH_USER_ID)
-all_questions = db_data.get("questions", [])
+all_questions = st.session_state.get("all_questions", [])
 
 user_state = st.session_state.quiz_user
 st.caption("Dang lam de hon hop da chu de")
@@ -129,7 +154,7 @@ elif st.session_state.generation_errors:
 	st.warning("Khong the tu sinh cau hoi bo sung. Chi tiet: " + " | ".join(st.session_state.generation_errors))
 
 if not st.session_state.quiz_set_ids:
-	create_new_quiz_set(all_questions)
+	create_new_quiz_set()
 
 quiz_ids = st.session_state.quiz_set_ids
 if len(quiz_ids) < QUIZ_SIZE:
@@ -162,7 +187,10 @@ st.session_state.current_question_id = quiz_ids[selected_index]
 
 current_question = None
 if st.session_state.current_question_id:
-	current_question = get_question_by_id(all_questions, st.session_state.current_question_id)
+	question_map = st.session_state.get("quiz_question_map", {})
+	current_question = question_map.get(st.session_state.current_question_id)
+	if not current_question:
+		current_question = get_question_by_id(all_questions, st.session_state.current_question_id)
 
 if not current_question:
 	st.warning("TODO: Kich hoat LLM API sinh cau hoi moi cho bo de tiep theo")
@@ -223,7 +251,7 @@ if answered_count == total_count and total_count > 0:
 
 	meme_path = _resolve_meme_path(correct_total)
 	if meme_path:
-		st.image(str(meme_path), caption=f"Meme theo diem: {correct_total}/{total_count}", use_container_width=True)
+		st.image(str(meme_path), caption=f"Meme theo diem: {correct_total}/{total_count}", width="stretch")
 	elif 1 <= correct_total <= 10:
 		st.info("Khong tim thay file meme tuong ung trong folder meme.")
 
@@ -234,7 +262,7 @@ if answered_count == total_count and total_count > 0:
 	)
 
 	if next_quiz_choice == "Co" and st.button("Tao bo quiz tiep theo"):
-		create_new_quiz_set(all_questions)
+		create_new_quiz_set()
 		if len(st.session_state.quiz_set_ids) < QUIZ_SIZE:
 			st.warning("TODO: Kich hoat LLM API de sinh them cau hoi cho bo 10 cau moi")
 		st.rerun()
