@@ -10,7 +10,6 @@ hoặc ReactJS/VueJS nếu đã có sẵn template. Tập trung vào tính trự
 -> phúc quyết định kĩ thuật + tech stack
 
 
-
 1. Tính Khả thi & Giá trị Thực tiễn (Khoảng 30%)
 Tiêu chí: Ứng dụng AI của bạn giải quyết được "nỗi đau" (pain point) thực tế nào? Thị trường có cần nó không?
 Hướng đi: Giám khảo KMS thường đánh giá rất cao những sản phẩm có chiều sâu về mặt phân tích dữ liệu và giải quyết đúng 
