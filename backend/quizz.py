@@ -1,5 +1,7 @@
 try:
 	from .quiz import (
+		add_question_to_pool,
+		add_questions_to_pool,
 		apply_quiz_result,
 		append_questions_to_db,
 		assess_user_topic_status,
@@ -23,6 +25,8 @@ try:
 	)
 except ImportError:
 	from quiz import (
+		add_question_to_pool,
+		add_questions_to_pool,
 		apply_quiz_result,
 		append_questions_to_db,
 		assess_user_topic_status,
@@ -47,6 +51,8 @@ except ImportError:
 
 
 __all__ = [
+	"add_question_to_pool",
+	"add_questions_to_pool",
 	"load_db",
 	"get_default_user",
 	"get_next_question",

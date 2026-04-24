@@ -1,44 +1,65 @@
+# ==================================================
+# FILE: .\frontend\pages\tutor.py (CẬP NHẬT)
+# ==================================================
 import pandas as pd
 import streamlit as st
-
+import requests
 
 st.set_page_config(page_title="Dashboard Giao vien", page_icon="📊", layout="wide")
 
-st.title("Dashboard giao vien")
-st.write("Theo doi nhanh tinh hinh lop hoc va canh bao som hoc sinh co nguy co.")
+st.title("Dashboard Giáo Viên")
+st.write("Theo dõi tổng quan lớp học và cảnh báo sớm học sinh có nguy cơ.")
 
-# Mock data: this table can later be replaced by SVM inference output.
-students_df = pd.DataFrame(
-	[
-		{"Tên học sinh": "Nguyen Van An", "Tiến độ (%)": 92, "Trạng thái": "Bình thường"},
-		{"Tên học sinh": "Tran Minh Khoa", "Tiến độ (%)": 58, "Trạng thái": "Nguy cơ"},
-		{"Tên học sinh": "Le Thu Ha", "Tiến độ (%)": 76, "Trạng thái": "Bình thường"},
-		{"Tên học sinh": "Pham Gia Bao", "Tiến độ (%)": 49, "Trạng thái": "Nguy cơ"},
-		{"Tên học sinh": "Do Ngoc Linh", "Tiến độ (%)": 84, "Trạng thái": "Bình thường"},
-	]
-)
+session_token = st.session_state.get("session_token", "")
+if not session_token or st.session_state.auth_user.get("role") != "admin":
+    st.warning("Bạn cần đăng nhập bằng tài khoản Giáo viên (admin) để xem trang này.")
+    st.stop()
 
-total_students = len(students_df)
-avg_score = students_df["Tiến độ (%)"].mean()
-at_risk_count = (students_df["Trạng thái"] == "Nguy cơ").sum()
+# Gọi API lấy thống kê lớp học
+API_URL = "http://localhost:1891"
 
-col1, col2, col3 = st.columns(3)
-col1.metric("Tổng học sinh", total_students)
-col2.metric("Điểm trung bình", f"{avg_score:.1f}")
-col3.metric("Số học sinh cần lưu ý", at_risk_count)
+class_res = requests.post(f"{API_URL}/dashboard/class", json={"session_token": session_token}).json()
+risk_res = requests.post(f"{API_URL}/dashboard/at-risk", json={"session_token": session_token}).json()
 
+if class_res.get("success") == False:
+    st.error("Lỗi lấy dữ liệu: " + class_res.get("error", ""))
+    st.stop()
 
-def highlight_risk_status(value: str) -> str:
-	if value == "Nguy cơ":
-		return "background-color: #ffebee; color: #b71c1c; font-weight: 700;"
-	return ""
+# Hiển thị số liệu tổng quan
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Tổng học sinh", class_res.get("total_students", 0))
+col2.metric("Số bài Quiz đã làm", class_res.get("total_quizzes", 0))
+col3.metric("Điểm trung bình hệ thống", f"{class_res.get('avg_score', 0):.2f}")
+col4.metric("Elo trung bình", class_res.get("avg_elo", 0))
 
+st.divider()
 
-styled_df = students_df.style.map(highlight_risk_status, subset=["Trạng thái"])
+# Xử lý dữ liệu học sinh nguy cơ
+st.subheader("⚠️ Danh sách học sinh cần lưu ý (At Risk)")
+risk_data = risk_res.get("at_risk_students", [])
 
-st.subheader("Danh sach hoc sinh")
-st.dataframe(styled_df, width="stretch")
+if not risk_data:
+    st.success("Tuyệt vời! Hiện tại không có học sinh nào bị tụt Elo hoặc có điểm số quá thấp.")
+else:
+    df = pd.DataFrame(risk_data)
+    df = df.rename(columns={
+        "user_id": "ID", 
+        "email": "Email", 
+        "avg_score": "Điểm TB", 
+        "avg_elo": "Elo TB", 
+        "elo_drop": "Độ tụt Elo lớn nhất"
+    })
+    
+    def highlight_drop(val):
+        color = '#ffebee' if val > 0 else ''
+        return f'background-color: {color}'
+        
+    styled_df = df.style.map(highlight_drop, subset=["Độ tụt Elo lớn nhất"])
+    st.dataframe(styled_df, width="stretch")
 
-st.caption(
-	"Trang thai 'Nguy cơ' dang duoc highlight. Day la vi tri de hien thi ket qua tu mo hinh SVM sau nay."
-)
+# Phân phối điểm (Dùng biểu đồ có sẵn của Streamlit)
+dist = class_res.get("score_distribution", {})
+if dist:
+    st.subheader("Phân phối năng lực lớp học")
+    dist_df = pd.DataFrame(list(dist.items()), columns=['Mức độ', 'Số lượng'])
+    st.bar_chart(dist_df.set_index('Mức độ'))

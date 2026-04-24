@@ -33,12 +33,12 @@ def call_gemini_chat_api(system_prompt: str, user_prompt: str, timeout: int = 40
     Required env vars:
     - GOOGLE_API_KEY
     Optional env vars:
-    - GOOGLE_GEMINI_MODEL (default: gemini-1.5-flash)
+    - GOOGLE_GEMINI_MODEL 
     """
     _load_local_env_file()
 
     api_key = os.getenv("GOOGLE_API_KEY", "").strip()
-    model = os.getenv("GOOGLE_GEMINI_MODEL", "gemini-1.5-flash").strip()
+    model = os.getenv("GOOGLE_GEMINI_MODEL", "gemini-3.1-flash-lite-preview").strip()
 
     if not api_key:
         raise RuntimeError(

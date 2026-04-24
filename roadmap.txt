@@ -1,0 +1,112 @@
+"""
+AI Roadmap Generator - Calls Gemini API to generate personalized learning roadmaps
+based on user profile (goal, learning style, subjects, level).
+"""
+
+import json
+import time
+
+import google.generativeai as genai
+
+# Models to try in order - if one hits quota, try the next
+MODELS_TO_TRY = [
+    "gemini-3.1-flash-lite-preview"
+]
+
+
+def generate_roadmap(profile: dict) -> dict:
+    """Generate a personalized learning roadmap using Gemini API.
+
+    Args:
+        profile: dict with keys: goal, learning_style, subjects, level
+
+    Returns:
+        dict with roadmap data (steps, descriptions, etc.)
+    """
+    goal = profile.get("goal", "Hoc tot hon")
+    learning_style = profile.get("learning_style", "Doc tai lieu")
+    subjects = profile.get("subjects", [])
+    level = profile.get("level", "Co ban")
+
+    subjects_str = ", ".join(subjects) if subjects else "Toan hoc"
+
+    prompt = f"""Ban la mot chuyen gia giao duc AI. Hay tao lo trinh hoc tap ca nhan hoa cho hoc sinh voi thong tin sau:
+
+- Muc tieu hoc tap: {goal}
+- Phong cach hoc: {learning_style}
+- Cac mon hoc: {subjects_str}
+- Trinh do hien tai: {level}
+
+Hay tra ve ket qua duoi dang JSON (KHONG co markdown code block, chi tra ve JSON thuan tuy) voi cau truc sau:
+{{
+  "title": "Tieu de lo trinh",
+  "summary": "Tom tat ngan gon ve lo trinh",
+  "total_weeks": <so tuan>,
+  "steps": [
+    {{
+      "step": 1,
+      "title": "Ten buoc",
+      "duration": "Thoi gian (vd: 1 tuan)",
+      "description": "Mo ta chi tiet",
+      "tasks": ["Nhiem vu 1", "Nhiem vu 2"],
+      "resources": ["Tai lieu/video goi y"],
+      "subject": "Mon hoc lien quan"
+    }}
+  ],
+  "tips": ["Meo hoc tap 1", "Meo hoc tap 2"]
+}}
+
+Hay tao lo trinh cu the, thuc te va phu hop voi phong cach hoc cua hoc sinh. Tra ve toi da 6 buoc.
+Chi tra ve JSON, khong them bat ky text nao khac.
+"""
+
+    if not GEMINI_API_KEY:
+        return {
+            "success": False,
+            "error": "Chua cau hinh GEMINI_API_KEY.",
+        }
+
+    genai.configure(api_key=GEMINI_API_KEY)
+
+    last_error = None
+    for model_name in MODELS_TO_TRY:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            text = response.text.strip()
+
+            # Clean up response - remove markdown code blocks if present
+            if text.startswith("```"):
+                text = text.split("\n", 1)[1]
+            if text.endswith("```"):
+                text = text.rsplit("```", 1)[0]
+            text = text.strip()
+
+            roadmap = json.loads(text)
+            return {"success": True, "roadmap": roadmap, "model_used": model_name}
+
+        except json.JSONDecodeError as e:
+            return {
+                "success": False,
+                "error": f"API tra ve JSON khong hop le: {e}",
+                "raw_response": text,
+            }
+        except Exception as e:
+            last_error = str(e)
+            if "429" in str(e) or "quota" in str(e).lower():
+                # Rate limited - wait and try next model
+                time.sleep(5)
+                continue
+            else:
+                return {
+                    "success": False,
+                    "error": f"Loi khi goi Gemini API ({model_name}): {e}",
+                }
+
+    return {
+        "success": False,
+        "error": f"Tat ca cac model deu het quota. Vui long tao API key moi tai aistudio.google.com/apikey. Chi tiet: {last_error}",
+    }
+
+
+đây là file road map 

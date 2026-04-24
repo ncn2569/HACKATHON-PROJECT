@@ -11,11 +11,149 @@ try:
 except ImportError:
     from llm_client import call_gemini_chat_api
 
+try:
+    from .data_pool import is_db_available, run_execute, run_query
+except ImportError:
+    from data_pool import is_db_available, run_execute, run_query
+
 
 DEFAULT_USER_ID = "hs_01"
 DB_FILE = Path(__file__).with_name("mock_db.json")
-DEFAULT_ELO = 500.0
+DEFAULT_ELO = 1000.0
 DEFAULT_ELO_BAND = 50
+DEFAULT_DB_USER_ID = 1
+
+
+# Convert topic names into stable keys used across adaptive logic.
+def _topic_key(name: str) -> str:
+    return name.strip().lower().replace(" ", "_")
+
+
+# Map DB difficulty (1-5) to Elo scale centered around 1000.
+def _difficulty_to_elo(difficulty: int | None) -> int:
+    mapping = {
+        1: 900,
+        2: 950,
+        3: 1000,
+        4: 1050,
+        5: 1100,
+    }
+    return mapping.get(int(difficulty or 3), 1000)
+
+
+# Map generated Elo back into DB difficulty bucket (1-5).
+def _elo_to_difficulty(elo: float) -> int:
+    if elo <= 925:
+        return 1
+    if elo <= 975:
+        return 2
+    if elo <= 1025:
+        return 3
+    if elo <= 1075:
+        return 4
+    return 5
+
+
+# Resolve frontend/default user id to numeric DB user id.
+def _resolve_db_user_id(user_id: str | int | None = None) -> int:
+    if isinstance(user_id, int):
+        return user_id
+    if isinstance(user_id, str) and user_id.isdigit():
+        return int(user_id)
+    return DEFAULT_DB_USER_ID
+
+
+# Load adaptive-quiz-compatible data model from PostgreSQL schema.
+def _load_db_from_postgres(user_id: int = DEFAULT_DB_USER_ID) -> dict:
+    question_rows = run_query(
+        """
+        SELECT
+            q.question_id,
+            q.content,
+            q.subject_id,
+            q.topic_id,
+            q.difficulty,
+            q.option_a,
+            q.option_b,
+            q.option_c,
+            q.option_d,
+            q.correct_option,
+            t.name AS topic_name
+        FROM questions q
+        LEFT JOIN topics t ON t.topic_id = q.topic_id
+        """
+    )
+
+    skill_rows = run_query(
+        """
+        SELECT us.topic_id, us.elo_score, t.name AS topic_name
+        FROM user_skills us
+        LEFT JOIN topics t ON t.topic_id = us.topic_id
+        WHERE us.user_id = %s
+        """,
+        (user_id,),
+    )
+
+    answered_rows = run_query(
+        """
+        SELECT DISTINCT question_id
+        FROM quiz_attempt_answers
+        WHERE user_id = %s
+        """,
+        (user_id,),
+    )
+
+    user_rows = run_query(
+        """
+        SELECT user_id, email, role
+        FROM users
+        WHERE user_id = %s
+        """,
+        (user_id,),
+    )
+
+    topic_elos = {
+        _topic_key(row.get("topic_name") or f"topic_{row.get('topic_id')}"): float(row.get("elo_score") or DEFAULT_ELO)
+        for row in skill_rows
+    }
+
+    questions = []
+    for row in question_rows:
+        topic_name = row.get("topic_name") or f"topic_{row.get('topic_id')}"
+        questions.append(
+            {
+                "id": str(row.get("question_id")),
+                "topic": _topic_key(topic_name),
+                "topic_id": row.get("topic_id"),
+                "subject_id": row.get("subject_id"),
+                "elo": _difficulty_to_elo(row.get("difficulty")),
+                "content": row.get("content") or "",
+                "options": [
+                    row.get("option_a") or "",
+                    row.get("option_b") or "",
+                    row.get("option_c") or "",
+                    row.get("option_d") or "",
+                ],
+                "correct_answer_index": ["A", "B", "C", "D"].index((row.get("correct_option") or "A").upper()),
+                "explanation": "",
+            }
+        )
+
+    default_user = user_rows[0] if user_rows else {"user_id": user_id, "email": f"user{user_id}@local"}
+    answered_questions = [str(row.get("question_id")) for row in answered_rows if row.get("question_id") is not None]
+
+    return {
+        "source": "postgres",
+        "users": {
+            f"hs_{user_id:02d}": {
+                "db_user_id": user_id,
+                "name": default_user.get("email", f"User {user_id}"),
+                "elos": topic_elos,
+                "answered_questions": answered_questions,
+            }
+        },
+        "questions": questions,
+    }
 
 
 # Load quiz database from local JSON mock store.
@@ -25,6 +163,15 @@ def load_db(db_path: str | None = None) -> dict:
     This is the temporary persistence layer and can be replaced later
     by PostgreSQL/MongoDB without changing call sites.
     """
+    # If db_path is omitted and PostgreSQL is reachable, use online DB as source of truth.
+    if db_path is None:
+        try:
+            if is_db_available():
+                return _load_db_from_postgres(user_id=DEFAULT_DB_USER_ID)
+        except Exception:
+            # Fall back to JSON when DB is temporarily unavailable.
+            pass
+
     target_path = Path(db_path) if db_path else DB_FILE
     with target_path.open("r", encoding="utf-8") as file:
         return json.load(file)
@@ -33,6 +180,10 @@ def load_db(db_path: str | None = None) -> dict:
 # Save updated quiz database (including generated questions).
 def save_db(db_data: dict, db_path: str | None = None) -> None:
     """Persist current DB state back to disk."""
+    # For PostgreSQL source, persistence is handled by INSERT/UPDATE queries.
+    if db_path is None and db_data.get("source") == "postgres":
+        return
+
     target_path = Path(db_path) if db_path else DB_FILE
     with target_path.open("w", encoding="utf-8") as file:
         json.dump(db_data, file, ensure_ascii=False, indent=2)
@@ -42,7 +193,15 @@ def save_db(db_data: dict, db_path: str | None = None) -> None:
 def get_default_user(db: dict, user_id: str = DEFAULT_USER_ID) -> dict:
     """Return default demo user from DB."""
     users = db.get("users", {})
-    return users.get(user_id, {"name": "Unknown", "elos": {}, "answered_questions": []})
+    if user_id in users:
+        return users[user_id]
+
+    # Accept hs_01 style aliases for postgres-mapped users.
+    alias_user = next(iter(users.values()), None)
+    if alias_user:
+        return alias_user
+
+    return {"name": "Unknown", "elos": {}, "answered_questions": []}
 
 
 # Get Elo for one topic; fallback avoids missing-key crashes.
@@ -169,6 +328,80 @@ def grade_answer(question: dict, selected_answer_index: int) -> int:
     return int(selected_answer_index == int(question.get("correct_answer_index", -1)))
 
 
+# Convert answer index to DB option letter (A/B/C/D).
+def _answer_letter(answer_index: int) -> str:
+    letters = ["A", "B", "C", "D"]
+    if 0 <= answer_index < len(letters):
+        return letters[answer_index]
+    return "A"
+
+
+# Persist one answer event and skill update into PostgreSQL schema.
+def _persist_attempt_to_postgres(user: dict, question: dict, selected_answer_index: int, old_elo: float, new_elo: float, is_correct: int) -> None:
+    db_user_id = user.get("db_user_id")
+    topic_id = question.get("topic_id")
+    subject_id = question.get("subject_id")
+    question_id = question.get("id")
+
+    if not (db_user_id and topic_id and subject_id and question_id):
+        return
+
+    try:
+        question_id_int = int(question_id)
+    except (TypeError, ValueError):
+        return
+
+    selected_option = _answer_letter(selected_answer_index)
+    is_correct_bool = bool(is_correct)
+
+    # Create a lightweight quiz session record for traceability.
+    quiz_row = run_execute(
+        """
+        INSERT INTO quizzes (user_id, total_questions, correct_answers, started_at, finished_at)
+        VALUES (%s, %s, %s, NOW(), NOW())
+        RETURNING quiz_id
+        """,
+        (db_user_id, 1, 1 if is_correct_bool else 0),
+        fetch=True,
+    )
+    quiz_id = quiz_row[0]["quiz_id"] if quiz_row else None
+
+    if quiz_id:
+        run_execute(
+            """
+            INSERT INTO quiz_questions (quiz_id, question_id)
+            VALUES (%s, %s)
+            """,
+            (quiz_id, question_id_int),
+        )
+        run_execute(
+            """
+            INSERT INTO quiz_attempt_answers (quiz_id, user_id, question_id, selected_option, is_correct)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (quiz_id, db_user_id, question_id_int, selected_option, is_correct_bool),
+        )
+
+    # Upsert user skill for current topic.
+    run_execute(
+        """
+        INSERT INTO user_skills (user_id, subject_id, topic_id, elo_score, last_updated)
+        VALUES (%s, %s, %s, %s, NOW())
+        ON CONFLICT (user_id, subject_id, topic_id)
+        DO UPDATE SET elo_score = EXCLUDED.elo_score, last_updated = NOW()
+        """,
+        (db_user_id, subject_id, topic_id, float(new_elo)),
+    )
+
+    run_execute(
+        """
+        INSERT INTO elo_history (user_id, topic_id, old_elo, new_elo, changed_at)
+        VALUES (%s, %s, %s, %s, NOW())
+        """,
+        (db_user_id, topic_id, float(old_elo), float(new_elo)),
+    )
+
+
 # Persist answer outcome to user state (per-topic Elo + answered ids).
 def apply_quiz_result(user: dict, question: dict, selected_answer_index: int) -> dict:
     """Update user state after one answer.
@@ -188,6 +421,21 @@ def apply_quiz_result(user: dict, question: dict, selected_answer_index: int) ->
     user.setdefault("answered_questions", [])
     if question_id and question_id not in user["answered_questions"]:
         user["answered_questions"].append(question_id)
+
+    # Persist into PostgreSQL if this user/question originated from SQL source.
+    try:
+        if is_db_available():
+            _persist_attempt_to_postgres(
+                user=user,
+                question=question,
+                selected_answer_index=selected_answer_index,
+                old_elo=current_topic_elo,
+                new_elo=new_topic_elo,
+                is_correct=is_correct,
+            )
+    except Exception:
+        # Keep UI flow resilient even when DB write fails.
+        pass
 
     return {
         "is_correct": is_correct,
@@ -367,24 +615,145 @@ def parse_generated_questions_json(raw_text: str, topic: str, target_elo: float)
     return [question for question in normalized_questions if question.get("content")]
 
 
+# Resolve topic/subject ids from either explicit ids or topic key/name.
+def _resolve_topic_subject_ids(topic: str | None = None, topic_id: int | None = None, subject_id: int | None = None) -> tuple[int | None, int | None]:
+    if topic_id and subject_id:
+        return int(topic_id), int(subject_id)
+
+    if topic_id and not subject_id:
+        rows = run_query("SELECT subject_id FROM topics WHERE topic_id = %s LIMIT 1", (topic_id,))
+        if rows:
+            return int(topic_id), int(rows[0].get("subject_id"))
+
+    if topic:
+        topic_name_guess = str(topic).replace("_", " ")
+        rows = run_query(
+            """
+            SELECT topic_id, subject_id
+            FROM topics
+            WHERE LOWER(name) = LOWER(%s)
+            LIMIT 1
+            """,
+            (topic_name_guess,),
+        )
+        if rows:
+            return int(rows[0].get("topic_id")), int(rows[0].get("subject_id"))
+
+    return None, None
+
+
+# Add one question to question pool from tutor/manual/llm source.
+def add_question_to_pool(question: dict, added_by: str = "tutor", db_path: str | None = None) -> dict | None:
+    options = question.get("options", [])
+    if not isinstance(options, list) or len(options) != 4:
+        return None
+
+    content = str(question.get("content", "")).strip()
+    if not content:
+        return None
+
+    correct_answer_index = int(question.get("correct_answer_index", 0))
+    if correct_answer_index not in [0, 1, 2, 3]:
+        return None
+
+    topic = question.get("topic")
+    topic_id = question.get("topic_id")
+    subject_id = question.get("subject_id")
+    elo_value = float(question.get("elo", DEFAULT_ELO))
+    difficulty = _elo_to_difficulty(elo_value)
+
+    # PostgreSQL mode insert.
+    if db_path is None:
+        try:
+            if is_db_available():
+                resolved_topic_id, resolved_subject_id = _resolve_topic_subject_ids(
+                    topic=topic,
+                    topic_id=topic_id,
+                    subject_id=subject_id,
+                )
+                if not (resolved_topic_id and resolved_subject_id):
+                    return None
+
+                inserted_rows = run_execute(
+                    """
+                    INSERT INTO questions (
+                        content, subject_id, topic_id, difficulty,
+                        option_a, option_b, option_c, option_d, correct_option
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING question_id, subject_id, topic_id, difficulty
+                    """,
+                    (
+                        content,
+                        resolved_subject_id,
+                        resolved_topic_id,
+                        difficulty,
+                        str(options[0]),
+                        str(options[1]),
+                        str(options[2]),
+                        str(options[3]),
+                        _answer_letter(correct_answer_index),
+                    ),
+                    fetch=True,
+                )
+                if not inserted_rows:
+                    return None
+
+                inserted = inserted_rows[0]
+                return {
+                    "id": str(inserted.get("question_id")),
+                    "topic": topic or f"topic_{inserted.get('topic_id')}",
+                    "topic_id": inserted.get("topic_id"),
+                    "subject_id": inserted.get("subject_id"),
+                    "elo": _difficulty_to_elo(inserted.get("difficulty")),
+                    "content": content,
+                    "options": [str(option) for option in options],
+                    "correct_answer_index": correct_answer_index,
+                    "explanation": str(question.get("explanation", f"Added by {added_by}")).strip(),
+                    "added_by": added_by,
+                }
+        except Exception:
+            pass
+
+    # JSON fallback mode insert.
+    db_data = load_db(db_path)
+    existing_ids = {item.get("id") for item in db_data.get("questions", [])}
+    question_id = str(question.get("id") or f"manual_{uuid.uuid4().hex[:8]}")
+    while question_id in existing_ids:
+        question_id = f"manual_{uuid.uuid4().hex[:8]}"
+
+    normalized = {
+        "id": question_id,
+        "topic": str(topic or "general"),
+        "elo": int(elo_value),
+        "content": content,
+        "options": [str(option) for option in options],
+        "correct_answer_index": correct_answer_index,
+        "explanation": str(question.get("explanation", f"Added by {added_by}")).strip(),
+        "added_by": added_by,
+    }
+    db_data.setdefault("questions", []).append(normalized)
+    save_db(db_data, db_path)
+    return normalized
+
+
+# Add many questions in one call, returning inserted normalized rows.
+def add_questions_to_pool(questions: list[dict], added_by: str = "tutor", db_path: str | None = None) -> list[dict]:
+    inserted_questions = []
+    for question in questions:
+        inserted = add_question_to_pool(question=question, added_by=added_by, db_path=db_path)
+        if inserted:
+            inserted_questions.append(inserted)
+    return inserted_questions
+
+
 # Update phase: append newly generated unique questions into mock DB.
 def append_questions_to_db(new_questions: list[dict], db_path: str | None = None) -> int:
     """Append generated questions into DB for future reuse."""
     if not new_questions:
         return 0
-
-    db_data = load_db(db_path)
-    existing_ids = {question.get("id") for question in db_data.get("questions", [])}
-
-    accepted_questions = [
-        question for question in new_questions if question.get("id") and question.get("id") not in existing_ids
-    ]
-    if not accepted_questions:
-        return 0
-
-    db_data.setdefault("questions", []).extend(accepted_questions)
-    save_db(db_data, db_path)
-    return len(accepted_questions)
+    inserted = add_questions_to_pool(new_questions, added_by="llm", db_path=db_path)
+    return len(inserted)
 
 
 # Call Gemini to create missing questions when DB supply is insufficient.

@@ -1,0 +1,142 @@
+"""
+Simple JSON-based authentication for hackathon demo.
+Stores users in a local JSON file. NOT for production use.
+"""
+
+import hashlib
+import json
+import uuid
+from pathlib import Path
+
+AUTH_DB_FILE = Path(__file__).with_name("users_db.json")
+
+
+def _load_users() -> dict:
+    """Load users database from JSON file."""
+    if not AUTH_DB_FILE.exists():
+        return {"users": {}}
+    with AUTH_DB_FILE.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _save_users(data: dict) -> None:
+    """Save users database to JSON file."""
+    with AUTH_DB_FILE.open("w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _hash_password(password: str) -> str:
+    """Hash password with SHA-256. Simple approach for hackathon."""
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+def register_user(full_name: str, email: str, password: str, role: str = "Hoc sinh") -> dict:
+    """Register a new user.
+
+    Returns dict with 'success' bool and 'message' or 'user' data.
+    """
+    if not full_name or not email or not password:
+        return {"success": False, "message": "Vui long dien day du thong tin."}
+
+    db = _load_users()
+
+    # Check if email already exists
+    for uid, user_data in db["users"].items():
+        if user_data.get("email", "").lower() == email.lower():
+            return {"success": False, "message": "Email nay da duoc dang ky."}
+
+    user_id = str(uuid.uuid4())[:8]
+    hashed_pw = _hash_password(password)
+
+    db["users"][user_id] = {
+        "full_name": full_name,
+        "email": email.lower(),
+        "password_hash": hashed_pw,
+        "role": role,
+        "onboarding_done": False,
+        "profile": {},
+        "elos": {"giai_tich": 500, "xac_suat": 500, "dai_so": 500},
+        "answered_questions": [],
+    }
+
+    _save_users(db)
+
+    return {
+        "success": True,
+        "message": "Dang ky thanh cong!",
+        "user": {
+            "user_id": user_id,
+            "full_name": full_name,
+            "email": email.lower(),
+            "role": role,
+            "onboarding_done": False,
+        },
+    }
+
+
+def login_user(email: str, password: str) -> dict:
+    """Login with email and password.
+
+    Returns dict with 'success' bool and 'message' or 'user' data.
+    """
+    if not email or not password:
+        return {"success": False, "message": "Vui long nhap email va mat khau."}
+
+    db = _load_users()
+    hashed_pw = _hash_password(password)
+
+    for uid, user_data in db["users"].items():
+        if user_data.get("email", "").lower() == email.lower():
+            if user_data.get("password_hash") == hashed_pw:
+                return {
+                    "success": True,
+                    "message": "Dang nhap thanh cong!",
+                    "user": {
+                        "user_id": uid,
+                        "full_name": user_data["full_name"],
+                        "email": user_data["email"],
+                        "role": user_data["role"],
+                        "onboarding_done": user_data.get("onboarding_done", False),
+                        "profile": user_data.get("profile", {}),
+                        "elos": user_data.get("elos", {}),
+                        "answered_questions": user_data.get("answered_questions", []),
+                    },
+                }
+            else:
+                return {"success": False, "message": "Mat khau khong dung."}
+
+    return {"success": False, "message": "Email chua duoc dang ky."}
+
+
+def save_onboarding(user_id: str, profile: dict) -> dict:
+    """Save onboarding profile (learning goal, style, subjects).
+
+    profile should contain: goal, learning_style, subjects, level
+    """
+    db = _load_users()
+
+    if user_id not in db["users"]:
+        return {"success": False, "message": "Khong tim thay nguoi dung."}
+
+    db["users"][user_id]["onboarding_done"] = True
+    db["users"][user_id]["profile"] = profile
+    _save_users(db)
+
+    return {"success": True, "message": "Da luu thong tin hoc tap!"}
+
+
+def get_user(user_id: str) -> dict | None:
+    """Get full user data by ID."""
+    db = _load_users()
+    return db["users"].get(user_id)
+
+
+def update_user_elos(user_id: str, elos: dict, answered_questions: list) -> None:
+    """Persist updated Elo scores back to the user database."""
+    db = _load_users()
+    if user_id in db["users"]:
+        db["users"][user_id]["elos"] = elos
+        db["users"][user_id]["answered_questions"] = answered_questions
+        _save_users(db)
+
+đây là file của đăng nhập đăng xuất
