@@ -25,6 +25,36 @@ AUTH_USER_ID = auth_user.get("user_id", 1)
 
 QUIZ_SIZE = 10
 
+MEME_DIR_CANDIDATES = [ROOT_DIR / "meme", ROOT_DIR / "meme" / "meme"]
+
+
+def _get_meme_filename(score: int) -> str:
+	if 1 <= score <= 2:
+		return "1.jpg"
+	if 3 <= score <= 4:
+		return "2.jpg"
+	if score == 5:
+		return "3.jpg"
+	if 6 <= score <= 7:
+		return "4.jpg"
+	if 8 <= score <= 9:
+		return "5.jpg"
+	if score == 10:
+		return "6.jpg"
+	return ""
+
+
+def _resolve_meme_path(score: int) -> Path | None:
+	filename = _get_meme_filename(score)
+	if not filename:
+		return None
+
+	for meme_dir in MEME_DIR_CANDIDATES:
+		candidate = meme_dir / filename
+		if candidate.exists():
+			return candidate
+	return None
+
 
 def bootstrap_user_state() -> None:
 	db = load_db(user_id=AUTH_USER_ID)
@@ -183,11 +213,19 @@ else:
 if answered_count == total_count and total_count > 0:
 	correct_total = sum(item.get("is_correct", 0) for item in st.session_state.quiz_answers.values())
 	wrong_total = total_count - correct_total
+	score_ratio = (correct_total / total_count) if total_count else 0.0
 
 	st.subheader("Ket qua cuoi bo quiz")
-	col1, col2 = st.columns(2)
+	col1, col2, col3 = st.columns(3)
 	col1.metric("So cau dung", correct_total)
 	col2.metric("So cau sai", wrong_total)
+	col3.metric("Ty le dung", f"{score_ratio * 100:.0f}%")
+
+	meme_path = _resolve_meme_path(correct_total)
+	if meme_path:
+		st.image(str(meme_path), caption=f"Meme theo diem: {correct_total}/{total_count}", use_container_width=True)
+	elif 1 <= correct_total <= 10:
+		st.info("Khong tim thay file meme tuong ung trong folder meme.")
 
 	next_quiz_choice = st.radio(
 		"Ban co muon tao bo quiz tiep theo khong?",

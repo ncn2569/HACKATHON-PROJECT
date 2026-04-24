@@ -1,7 +1,9 @@
 import argparse
+import concurrent.futures
 import json
 import random
 import re
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -22,6 +24,10 @@ DB_FILE = Path(__file__).with_name("mock_db.json")
 DEFAULT_ELO = 1000.0
 DEFAULT_ELO_BAND = 50
 DEFAULT_DB_USER_ID = 1
+DB_HEALTH_TTL_SECONDS = 30
+
+_DB_AVAILABLE_CACHE: dict[str, float | bool] = {"value": False, "checked_at": 0.0}
+_PERSIST_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="quiz_persist")
 
 
 # Convert topic names into stable keys used across adaptive logic.
@@ -403,6 +409,41 @@ def _persist_attempt_to_postgres(user: dict, question: dict, selected_answer_ind
     )
 
 
+# Cache DB health check so each answer does not run an extra round-trip query.
+def _is_db_available_cached() -> bool:
+    now = time.time()
+    checked_at = float(_DB_AVAILABLE_CACHE.get("checked_at", 0.0) or 0.0)
+    cached_value = bool(_DB_AVAILABLE_CACHE.get("value", False))
+
+    if now - checked_at < DB_HEALTH_TTL_SECONDS:
+        return cached_value
+
+    try:
+        current = bool(is_db_available())
+    except Exception:
+        current = False
+
+    _DB_AVAILABLE_CACHE["value"] = current
+    _DB_AVAILABLE_CACHE["checked_at"] = now
+    return current
+
+
+# Persist answer writes in a background thread to keep UI response snappy.
+def _persist_attempt_async(user: dict, question: dict, selected_answer_index: int, old_elo: float, new_elo: float, is_correct: int) -> None:
+    try:
+        _PERSIST_EXECUTOR.submit(
+            _persist_attempt_to_postgres,
+            user,
+            question,
+            selected_answer_index,
+            old_elo,
+            new_elo,
+            is_correct,
+        )
+    except Exception:
+        pass
+
+
 # Persist answer outcome to user state (per-topic Elo + answered ids).
 def apply_quiz_result(user: dict, question: dict, selected_answer_index: int) -> dict:
     """Update user state after one answer.
@@ -425,8 +466,8 @@ def apply_quiz_result(user: dict, question: dict, selected_answer_index: int) ->
 
     # Persist into PostgreSQL if this user/question originated from SQL source.
     try:
-        if is_db_available():
-            _persist_attempt_to_postgres(
+        if _is_db_available_cached():
+            _persist_attempt_async(
                 user=user,
                 question=question,
                 selected_answer_index=selected_answer_index,
