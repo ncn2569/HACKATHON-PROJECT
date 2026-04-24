@@ -101,14 +101,6 @@ pip install -r requirements.txt
 Tao file .env o root project:
 
 ```env
-# PostgreSQL
-DB_HOST=your_host
-DB_PORT=5432
-DB_NAME=postgres
-DB_USER=postgres
-DB_PASSWORD=your_password
-DB_SSLMODE=require
-DB_CONNECT_TIMEOUT=10
 
 # Gemini
 GOOGLE_API_KEY=your_google_api_key

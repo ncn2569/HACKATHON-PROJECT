@@ -3,3 +3,23 @@ venv/
 .env
 
 12.docx
+
+*.txt
+
+print.py
+
+all_code.txt
+
+chatbot.txt
+
+dashboard.txt
+
+login.txt
+
+meme.txt
+
+tutor_quizz.txt
+
+roadmap.txt
+
+
