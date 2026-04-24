@@ -1,13 +1,15 @@
 import streamlit as st
 from pathlib import Path
 import sys
+import requests
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
 	sys.path.append(str(ROOT_DIR))
 
-from backend.auth_service import get_session_user, login_user, logout_user
+
+API_URL = "http://localhost:1891"
 
 
 st.set_page_config(page_title="LMS - Anti Brainrot", layout="wide")
@@ -39,9 +41,7 @@ def clear_app_session() -> None:
 			del st.session_state[key]
 
 
-user = get_session_user(st.session_state.session_token) if st.session_state.session_token else None
-if user:
-	st.session_state.auth_user = user
+# Session is managed by backend API process; keep local user from login response.
 
 if not st.session_state.auth_user:
 	st.sidebar.header("Dang nhap")
@@ -49,13 +49,21 @@ if not st.session_state.auth_user:
 	password = st.sidebar.text_input("Mat khau", type="password")
 
 	if st.sidebar.button("Dang nhap", use_container_width=True):
-		result = login_user(email=email, password=password)
-		if result.get("success"):
-			st.session_state.session_token = result.get("session_token", "")
-			st.session_state.auth_user = result.get("user")
-			st.rerun()
-		else:
-			st.sidebar.error(result.get("message", "Dang nhap that bai"))
+		try:
+			res = requests.post(
+				f"{API_URL}/auth/login",
+				json={"email": email, "password": password},
+				timeout=10,
+			)
+			result = res.json()
+			if result.get("success"):
+				st.session_state.session_token = result.get("session_token", "")
+				st.session_state.auth_user = result.get("user")
+				st.rerun()
+			else:
+				st.sidebar.error(result.get("message", "Dang nhap that bai"))
+		except Exception as exc:
+			st.sidebar.error(f"Khong ket noi duoc backend auth: {exc}")
 
 	st.info("Vui long dang nhap de su dung LMS.")
 	st.stop()
@@ -64,7 +72,14 @@ st.sidebar.success(f"Xin chao, {st.session_state.auth_user.get('email', 'user')}
 st.sidebar.caption(f"Role: {st.session_state.auth_user.get('role', 'student')}")
 
 if st.sidebar.button("Dang xuat", use_container_width=True):
-	logout_user(st.session_state.session_token)
+	try:
+		requests.post(
+			f"{API_URL}/auth/logout",
+			json={"session_token": st.session_state.session_token},
+			timeout=10,
+		)
+	except Exception:
+		pass
 	clear_app_session()
 	st.rerun()
 

@@ -1,7 +1,7 @@
 import os
 
 # 1. Khai báo các thư mục và file MẬT hoặc RÁC cần bỏ qua
-IGNORE_DIRS = {'.git', '.venv', 'venv', '__pycache__', 'node_modules', '.idea', '.vscode','.csv', '.jsonl','json'}
+IGNORE_DIRS = {'.git', '.venv', 'venv', '__pycache__', 'node_modules', '.idea', '.vscode','.csv', '.jsonl','json','.docx'}
 IGNORE_FILES = {'.env', '.env.example', 'gom_code.py', 'all_code.txt', 'requirements.txt','data-cleaned.jsonl','print.py'}
 
 # 2. (Tùy chọn) Chỉ định các đuôi file muốn gom để tránh đọc nhầm file ảnh, model AI...

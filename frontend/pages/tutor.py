@@ -11,12 +11,18 @@ st.title("Dashboard Giáo Viên")
 st.write("Theo dõi tổng quan lớp học và cảnh báo sớm học sinh có nguy cơ.")
 
 session_token = st.session_state.get("session_token", "")
-if not session_token or st.session_state.auth_user.get("role") != "admin":
+auth_user = st.session_state.get("auth_user") or {}
+if not session_token or auth_user.get("role") != "admin":
     st.warning("Bạn cần đăng nhập bằng tài khoản Giáo viên (admin) để xem trang này.")
     st.stop()
 
 # Gọi API lấy thống kê lớp học
 API_URL = "http://localhost:1891"
+
+me_res = requests.post(f"{API_URL}/auth/me", json={"session_token": session_token}).json()
+if me_res.get("success") is False or (me_res.get("user") or {}).get("role") != "admin":
+    st.error("Phiên đăng nhập không hợp lệ hoặc không có quyền admin.")
+    st.stop()
 
 class_res = requests.post(f"{API_URL}/dashboard/class", json={"session_token": session_token}).json()
 risk_res = requests.post(f"{API_URL}/dashboard/at-risk", json={"session_token": session_token}).json()

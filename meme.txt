@@ -1,0 +1,26 @@
+# ===== Logic xử lý =====
+def get_meme_path(score: int) -> str:
+    if 1 <= score <= 2:
+        img = "1.jpg"
+    elif 3 <= score <= 4:
+        img = "2.jpg"
+    elif score == 5:
+        img = "3.jpg"
+    elif 6 <= score <= 7:
+        img = "4.jpg"
+    elif 8 <= score <= 9:
+        img = "5.jpg"
+    elif score == 10:
+        img = "6.jpg"
+    else:
+        raise ValueError("Score must be from 1 to 10")
+
+    path = os.path.join("meme", img)
+
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"File not found: {path}")
+
+    return path
+
+
+    

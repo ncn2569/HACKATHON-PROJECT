@@ -11,6 +11,11 @@ from langchain_core.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+try:
+    from .data_pool import run_execute
+except ImportError:
+    from data_pool import run_execute
+
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_FILE = ROOT_DIR / "12.docx"
@@ -199,8 +204,27 @@ def fallback_response() -> dict:
     }
 
 
+# Store one chatbot Q/A turn into PostgreSQL chat_history table.
+def _persist_chat_history(user_id: int | None, question: str, answer: str) -> None:
+    if not user_id:
+        return
+
+    run_execute(
+        """
+        INSERT INTO chat_history (user_id, question, answer)
+        VALUES (%s, %s, %s)
+        """,
+        (int(user_id), question, answer),
+    )
+
+
 # Main chatbot inference preserving ask-back/explain control logic.
-def chat_with_memory(question: str, session_id: str = "default_student_1", style: str = "Holmes") -> dict:
+def chat_with_memory(
+    question: str,
+    session_id: str = "default_student_1",
+    style: str = "Holmes",
+    user_id: int | None = None,
+) -> dict:
     init_chatbot_runtime()
 
     detailed_style = STYLE_MAP.get(style, STYLE_MAP["Tiêu chuẩn"])
@@ -242,5 +266,10 @@ def chat_with_memory(question: str, session_id: str = "default_student_1", style
 
     if not used_fallback:
         update_chat_history(session_id, question, parsed["text"])
+        try:
+            _persist_chat_history(user_id, question, parsed["text"])
+        except Exception:
+            # Keep chatbot responses available even if DB write fails.
+            pass
 
     return parsed

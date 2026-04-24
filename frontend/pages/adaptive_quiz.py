@@ -15,15 +15,24 @@ st.set_page_config(page_title="Adaptive Quiz", page_icon="🧠", layout="wide")
 st.title("Adaptive Quiz")
 st.write("De hon hop 10 cau tu dong tao tu nhieu chu de. Elo duoc tinh rieng o backend.")
 
+session_token = st.session_state.get("session_token", "")
+auth_user = st.session_state.get("auth_user")
+if not session_token or not auth_user:
+	st.warning("Ban can dang nhap o trang chinh truoc khi lam quiz.")
+	st.stop()
+
+AUTH_USER_ID = auth_user.get("user_id", 1)
+
 QUIZ_SIZE = 10
 
 
 def bootstrap_user_state() -> None:
-	db = load_db()
+	db = load_db(user_id=AUTH_USER_ID)
 	base_user = get_default_user(db, "hs_01")
 
 	if "quiz_user" not in st.session_state:
 		st.session_state.quiz_user = {
+			"db_user_id": int(AUTH_USER_ID),
 			"name": base_user.get("name", "Hoc sinh Demo"),
 			"elos": dict(base_user.get("elos", {})),
 			"answered_questions": list(base_user.get("answered_questions", [])),
@@ -53,6 +62,7 @@ def create_new_quiz_set(all_questions: list[dict]) -> None:
 		user=st.session_state.quiz_user,
 		quiz_size=QUIZ_SIZE,
 		allow_generation=True,
+		db_user_id=AUTH_USER_ID,
 	)
 	quiz_set = result.get("questions", [])
 	st.session_state.quiz_set_ids = [q.get("id") for q in quiz_set if q.get("id")]
@@ -69,7 +79,7 @@ def get_progress(quiz_ids: list[str], quiz_answers: dict) -> tuple[int, int]:
 
 
 bootstrap_user_state()
-db_data = load_db()
+db_data = load_db(user_id=AUTH_USER_ID)
 all_questions = db_data.get("questions", [])
 
 user_state = st.session_state.quiz_user

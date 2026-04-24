@@ -157,7 +157,7 @@ def _load_db_from_postgres(user_id: int = DEFAULT_DB_USER_ID) -> dict:
 
 
 # Load quiz database from local JSON mock store.
-def load_db(db_path: str | None = None) -> dict:
+def load_db(db_path: str | None = None, user_id: str | int | None = None) -> dict:
     """Load quiz data from JSON.
 
     This is the temporary persistence layer and can be replaced later
@@ -167,7 +167,8 @@ def load_db(db_path: str | None = None) -> dict:
     if db_path is None:
         try:
             if is_db_available():
-                return _load_db_from_postgres(user_id=DEFAULT_DB_USER_ID)
+                db_user_id = _resolve_db_user_id(user_id)
+                return _load_db_from_postgres(user_id=db_user_id)
         except Exception:
             # Fall back to JSON when DB is temporarily unavailable.
             pass
@@ -814,6 +815,7 @@ def build_adaptive_quiz_set(
     elo_band: int = DEFAULT_ELO_BAND,
     db_path: str | None = None,
     allow_generation: bool = True,
+    db_user_id: str | int | None = None,
 ) -> dict:
     """End-to-end pipeline for adaptive quiz generation.
 
@@ -826,7 +828,7 @@ def build_adaptive_quiz_set(
     Update Phase:
         - append generated questions to DB and include them in current quiz set.
     """
-    db_data = load_db(db_path)
+    db_data = load_db(db_path, user_id=db_user_id)
     all_questions = db_data.get("questions", [])
     topic_status = assess_user_topic_status(user, all_questions)
 

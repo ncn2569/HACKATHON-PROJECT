@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 
+import requests
 import streamlit as st
 
 
@@ -8,9 +9,8 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
 	sys.path.append(str(ROOT_DIR))
 
-from backend.auth_service import get_session_user
-from backend.roadmap_service import create_roadmap_for_user, get_subject_names
 
+API_URL = "http://localhost:1891"
 
 st.set_page_config(page_title="Lo trinh hoc", page_icon="🗺️", layout="wide")
 
@@ -18,12 +18,20 @@ st.title("Lo trinh hoc")
 st.write("Nhap thong tin hoc tap de tao lo trinh ca nhan hoa.")
 
 session_token = st.session_state.get("session_token", "")
-auth_user = get_session_user(session_token) if session_token else None
-if not auth_user:
+auth_user = st.session_state.get("auth_user")
+if not session_token or not auth_user:
 	st.warning("Ban can dang nhap o trang chinh truoc khi tao lo trinh.")
 	st.stop()
 
-subject_options = get_subject_names()
+subject_options = []
+try:
+	res = requests.get(f"{API_URL}/roadmap/subjects", timeout=10)
+	payload = res.json()
+	if payload.get("success"):
+		subject_options = payload.get("subjects", [])
+except Exception:
+	subject_options = []
+
 if not subject_options:
 	subject_options = ["Mathematics"]
 
@@ -45,7 +53,22 @@ if submitted:
 	}
 
 	with st.spinner("AI dang tao lo trinh..."):
-		result = create_roadmap_for_user(int(auth_user["user_id"]), profile)
+		try:
+			res = requests.post(
+				f"{API_URL}/roadmap/create",
+				json={
+					"session_token": session_token,
+					"goal": profile["goal"],
+					"level": profile["level"],
+					"learning_style": profile["learning_style"],
+					"subjects": profile["subjects"],
+					"target_time": profile["target_time"],
+				},
+				timeout=30,
+			)
+			result = res.json()
+		except Exception as exc:
+			result = {"success": False, "error": f"Khong ket noi duoc backend roadmap: {exc}"}
 
 	if not result.get("success"):
 		st.error(result.get("error", "Khong the tao lo trinh"))

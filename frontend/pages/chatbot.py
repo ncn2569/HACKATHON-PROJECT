@@ -2,6 +2,7 @@ from pathlib import Path
 import random
 import sys
 
+import requests
 import streamlit as st
 
 
@@ -9,12 +10,20 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
-from backend.chatbot_service import STYLE_MAP, chat_with_memory
+
+API_URL = "http://localhost:1891"
+STYLE_OPTIONS = ["Tiêu chuẩn", "Gen Z", "Holmes", "Quân đội"]
 
 
 st.set_page_config(page_title="Chatbot Socratic", page_icon="💬", layout="wide")
 st.title("Chatbot Ho Tro Tu Duy")
 st.caption("Du lieu RAG: 12.docx | Logic giu nguyen theo chatbot.txt (ask-back, memory, ep EXPLAIN khi be tac)")
+
+session_token = st.session_state.get("session_token", "")
+auth_user = st.session_state.get("auth_user")
+if not session_token or not auth_user:
+    st.warning("Ban can dang nhap o trang chinh truoc khi dung chatbot.")
+    st.stop()
 
 if "chat_session_id" not in st.session_state:
     st.session_state.chat_session_id = f"student_{random.randint(1000, 9999)}"
@@ -28,7 +37,7 @@ if "chat_messages" not in st.session_state:
         }
     ]
 
-selected_style = st.selectbox("Phong cach AI", options=list(STYLE_MAP.keys()), index=2)
+selected_style = st.selectbox("Phong cach AI", options=STYLE_OPTIONS, index=2)
 
 for msg in st.session_state.chat_messages:
     with st.chat_message(msg["role"]):
@@ -44,11 +53,17 @@ if prompt:
 
     with st.chat_message("assistant"):
         try:
-            response = chat_with_memory(
-                question=prompt,
-                session_id=st.session_state.chat_session_id,
-                style=selected_style,
+            res = requests.post(
+                f"{API_URL}/chat",
+                json={
+                    "question": prompt,
+                    "session_id": st.session_state.chat_session_id,
+                    "style": selected_style,
+                    "session_token": session_token,
+                },
+                timeout=30,
             )
+            response = res.json()
             action = response.get("action", "")
             text = response.get("text", "")
             st.write(text)
