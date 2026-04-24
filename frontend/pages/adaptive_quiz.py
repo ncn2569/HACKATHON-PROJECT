@@ -8,7 +8,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
 	sys.path.append(str(ROOT_DIR))
 
-from backend.quiz import apply_quiz_result, build_mixed_quiz_set, get_default_user, get_question_by_id, load_db
+from backend.quiz import apply_quiz_result, build_adaptive_quiz_set, get_default_user, get_question_by_id, load_db
 
 
 st.set_page_config(page_title="Adaptive Quiz", page_icon="🧠", layout="wide")
@@ -38,11 +38,28 @@ def bootstrap_user_state() -> None:
 	if "quiz_answers" not in st.session_state:
 		st.session_state.quiz_answers = {}
 
+	if "quiz_report" not in st.session_state:
+		st.session_state.quiz_report = {"weak_topics": [], "review_topics": []}
+
+	if "generated_count" not in st.session_state:
+		st.session_state.generated_count = 0
+
+	if "generation_errors" not in st.session_state:
+		st.session_state.generation_errors = []
+
 
 def create_new_quiz_set(all_questions: list[dict]) -> None:
-	quiz_set = build_mixed_quiz_set(st.session_state.quiz_user, all_questions, quiz_size=QUIZ_SIZE)
+	result = build_adaptive_quiz_set(
+		user=st.session_state.quiz_user,
+		quiz_size=QUIZ_SIZE,
+		allow_generation=True,
+	)
+	quiz_set = result.get("questions", [])
 	st.session_state.quiz_set_ids = [q.get("id") for q in quiz_set if q.get("id")]
 	st.session_state.quiz_answers = {}
+	st.session_state.quiz_report = result.get("report", {"weak_topics": [], "review_topics": []})
+	st.session_state.generated_count = int(result.get("generated_count", 0))
+	st.session_state.generation_errors = list(result.get("generation_errors", []))
 	st.session_state.current_question_id = st.session_state.quiz_set_ids[0] if st.session_state.quiz_set_ids else None
 
 
@@ -57,6 +74,19 @@ all_questions = db_data.get("questions", [])
 
 user_state = st.session_state.quiz_user
 st.caption("Dang lam de hon hop da chu de")
+
+report = st.session_state.quiz_report
+if report.get("weak_topics") or report.get("review_topics"):
+	st.caption(
+		"Topic yeu: "
+		+ ", ".join(report.get("weak_topics", []))
+		+ " | Topic on tap: "
+		+ ", ".join(report.get("review_topics", []))
+	)
+if st.session_state.generated_count > 0:
+	st.info(f"Da bo sung {st.session_state.generated_count} cau hoi moi tu Gemini cho bo de nay.")
+elif st.session_state.generation_errors:
+	st.warning("Khong the tu sinh cau hoi bo sung. Chi tiet: " + " | ".join(st.session_state.generation_errors))
 
 if not st.session_state.quiz_set_ids:
 	create_new_quiz_set(all_questions)
@@ -160,3 +190,5 @@ if answered_count == total_count and total_count > 0:
 		if len(st.session_state.quiz_set_ids) < QUIZ_SIZE:
 			st.warning("TODO: Kich hoat LLM API de sinh them cau hoi cho bo 10 cau moi")
 		st.rerun()
+
+

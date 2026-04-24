@@ -1,8 +1,11 @@
 import argparse
 
 from quiz import (
+    assess_user_topic_status,
+    build_adaptive_quiz_set,
     build_mixed_quiz_set,
     explain_elo_calculation,
+    fetch_questions_for_topic,
     get_default_user,
     get_next_question,
     load_db,
@@ -71,11 +74,45 @@ def run_formula_table() -> None:
         )
 
 
+def run_report_phase_demo() -> None:
+    print("\n[DEMO] Report phase - weak/review topics")
+    db = load_db()
+    user = get_default_user(db, "hs_01")
+    report = assess_user_topic_status(user, db.get("questions", []))
+    print(report)
+
+
+def run_fetch_phase_demo(topic: str = "giai_tich", required_count: int = 5, elo_band: int = 50) -> None:
+    print("\n[DEMO] Fetching phase - DB candidate query")
+    db = load_db()
+    user = get_default_user(db, "hs_01")
+    fetched = fetch_questions_for_topic(
+        user=user,
+        topic=topic,
+        questions=db.get("questions", []),
+        required_count=required_count,
+        elo_band=elo_band,
+    )
+    print(f"Fetched {len(fetched)} question(s) for topic={topic}")
+    for question in fetched:
+        print(f"- {question.get('id')} | elo={question.get('elo')}")
+
+
+def run_pipeline_demo(quiz_size: int = 10) -> None:
+    print("\n[DEMO] Full adaptive pipeline (report/fetch/generate/update)")
+    db = load_db()
+    user = get_default_user(db, "hs_01")
+    result = build_adaptive_quiz_set(user=user, quiz_size=quiz_size, allow_generation=False)
+    print(f"Quiz size: {len(result.get('questions', []))}")
+    print(f"Generated count: {result.get('generated_count', 0)}")
+    print(f"Report: {result.get('report', {})}")
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Manual test utility for Adaptive Quiz Elo")
     parser.add_argument(
         "--mode",
-        choices=["all", "elo", "tie", "set", "table"],
+        choices=["all", "elo", "tie", "set", "table", "report", "fetch", "pipeline"],
         default="all",
         help="What demo to run",
     )
@@ -85,6 +122,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--topic", type=str, default="giai_tich", help="Topic for tie random demo")
     parser.add_argument("--runs", type=int, default=6, help="How many picks for tie random demo")
     parser.add_argument("--size", type=int, default=10, help="Quiz size for set preview")
+    parser.add_argument("--band", type=int, default=50, help="Elo band for fetch demo")
     return parser
 
 
@@ -99,6 +137,12 @@ def main() -> None:
         run_quiz_set_preview(args.size)
     if args.mode in ("all", "table"):
         run_formula_table()
+    if args.mode in ("all", "report"):
+        run_report_phase_demo()
+    if args.mode in ("all", "fetch"):
+        run_fetch_phase_demo(topic=args.topic, required_count=args.size, elo_band=args.band)
+    if args.mode in ("all", "pipeline"):
+        run_pipeline_demo(quiz_size=args.size)
 
 
 if __name__ == "__main__":
@@ -110,3 +154,6 @@ if __name__ == "__main__":
 # run_tie_random_demo(topic="giai_tich", runs=10)
 # run_quiz_set_preview(quiz_size=10)
 # run_formula_table()
+# run_report_phase_demo()
+# run_fetch_phase_demo(topic="giai_tich", required_count=5, elo_band=50)
+# run_pipeline_demo(quiz_size=10)
